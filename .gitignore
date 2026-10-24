@@ -1,0 +1,19 @@
+# Binaries and object files
+*.exe
+*.o
+*.obj
+*.dll.a
+bin/
+build/
+
+# IDE and Editor files
+.vscode/
+.vs/
+*.layout
+*.depend
+*.cbp.mak
+
+# Temporary and log files
+*.log
+*.tmp
+*.bak
