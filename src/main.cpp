@@ -1,20 +1,36 @@
 #include <GL/glut.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
 #include "Config.h"
+
+enum GameState {
+    STATE_READY,
+    STATE_PLAYING,
+    STATE_PAUSED,
+    STATE_WON,
+    STATE_GAME_OVER
+};
 
 struct Brick {
     float x, y;
     bool active;
 };
 
-// Scene and motion state
+// Game state variables
+GameState gameState = STATE_READY;
+GameState stateBeforePause = STATE_READY;
+int score = 0;
+int lives = Config::INITIAL_LIVES;
+int remainingBricks = Config::BRICK_ROWS * Config::BRICK_COLS;
+
+// Paddle and ball state
 float paddleX = (Config::WINDOW_WIDTH - Config::PADDLE_WIDTH) / 2.0f;
 float ballX = Config::WINDOW_WIDTH / 2.0f;
 float ballY = Config::PADDLE_Y + Config::PADDLE_HEIGHT + Config::BALL_RADIUS + 1.0f;
 float ballVX = 0.0f;
 float ballVY = 0.0f;
-bool ballLaunched = false;
 
 bool moveLeft = false;
 bool moveRight = false;
@@ -32,20 +48,10 @@ const float ROW_COLORS[Config::BRICK_ROWS][3] = {
 };
 
 void resetBallOnPaddle() {
-    ballLaunched = false;
     ballVX = 0.0f;
     ballVY = 0.0f;
     ballX = paddleX + Config::PADDLE_WIDTH / 2.0f;
     ballY = Config::PADDLE_Y + Config::PADDLE_HEIGHT + Config::BALL_RADIUS + 1.0f;
-}
-
-void launchBall() {
-    if (!ballLaunched) {
-        ballLaunched = true;
-        float initialAngle = 0.35f; // ~20 degrees right of vertical
-        ballVX = Config::BALL_SPEED * std::sin(initialAngle);
-        ballVY = Config::BALL_SPEED * std::cos(initialAngle);
-    }
 }
 
 void initBricks() {
@@ -55,6 +61,35 @@ void initBricks() {
             bricks[r][c].y = Config::BRICK_START_Y - r * (Config::BRICK_HEIGHT + Config::BRICK_PADDING_Y);
             bricks[r][c].active = true;
         }
+    }
+    remainingBricks = Config::BRICK_ROWS * Config::BRICK_COLS;
+}
+
+void resetGame() {
+    score = 0;
+    lives = Config::INITIAL_LIVES;
+    paddleX = (Config::WINDOW_WIDTH - Config::PADDLE_WIDTH) / 2.0f;
+    initBricks();
+    resetBallOnPaddle();
+    gameState = STATE_READY;
+    stateBeforePause = STATE_READY;
+}
+
+void launchBall() {
+    if (gameState == STATE_READY) {
+        gameState = STATE_PLAYING;
+        float initialAngle = 0.35f; // ~20 degrees right of vertical
+        ballVX = Config::BALL_SPEED * std::sin(initialAngle);
+        ballVY = Config::BALL_SPEED * std::cos(initialAngle);
+    }
+}
+
+void togglePause() {
+    if (gameState == STATE_PLAYING || gameState == STATE_READY) {
+        stateBeforePause = gameState;
+        gameState = STATE_PAUSED;
+    } else if (gameState == STATE_PAUSED) {
+        gameState = stateBeforePause;
     }
 }
 
@@ -66,8 +101,7 @@ void init() {
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    initBricks();
-    resetBallOnPaddle();
+    resetGame();
     lastTimeMs = glutGet(GLUT_ELAPSED_TIME);
 }
 
@@ -83,7 +117,7 @@ void plotCirclePoints(int xc, int yc, int x, int y) {
     glVertex2i(xc - y, yc - x);
 }
 
-// Reusable Bresenham circle-drawing routine for the ball outline
+// Reusable Bresenham circle-drawing routine for the ball and life indicators
 void drawBresenhamCircle(int xc, int yc, int r) {
     int x = 0;
     int y = r;
@@ -101,6 +135,22 @@ void drawBresenhamCircle(int xc, int yc, int r) {
         x++;
     }
     glEnd();
+}
+
+void drawText(float x, float y, void* font, const char* text) {
+    glRasterPos2f(x, y);
+    for (const char* p = text; *p != '\0'; ++p) {
+        glutBitmapCharacter(font, *p);
+    }
+}
+
+int getTextWidth(void* font, const char* text) {
+    return glutBitmapLength(font, reinterpret_cast<const unsigned char*>(text));
+}
+
+void drawCenteredText(float centerX, float y, void* font, const char* text) {
+    int width = getTextWidth(font, text);
+    drawText(centerX - width / 2.0f, y, font, text);
 }
 
 void drawBoundaries() {
@@ -184,7 +234,109 @@ void drawBall() {
     glPointSize(1.0f);
 }
 
-// Check if ball circle (ballX, ballY, r) intersects rectangle [rx, rx+rw] x [ry, ry+rh]
+void drawHUD() {
+    // Score on the left
+    char scoreBuf[64];
+    std::snprintf(scoreBuf, sizeof(scoreBuf), "Score: %d", score);
+    glColor3f(0.95f, 0.96f, 1.0f);
+    drawText(Config::FIELD_LEFT + 4.0f, 565.0f, GLUT_BITMAP_HELVETICA_18, scoreBuf);
+
+    // Controls summary in the center
+    glColor3f(0.68f, 0.75f, 0.88f);
+    drawCenteredText(
+        Config::WINDOW_WIDTH / 2.0f,
+        567.0f,
+        GLUT_BITMAP_HELVETICA_12,
+        "Left/Right: Move  |  SPACE: Launch  |  P: Pause  |  R: Restart"
+    );
+
+    // Lives text and Bresenham circle indicators on the right
+    char livesBuf[32];
+    std::snprintf(livesBuf, sizeof(livesBuf), "Lives: %d", lives);
+    glColor3f(0.95f, 0.96f, 1.0f);
+    drawText(Config::FIELD_RIGHT - 135.0f, 565.0f, GLUT_BITMAP_HELVETICA_18, livesBuf);
+
+    glPointSize(1.5f);
+    for (int i = 0; i < Config::INITIAL_LIVES; ++i) {
+        int lx = static_cast<int>(Config::FIELD_RIGHT - 48.0f + i * 18.0f);
+        int ly = 571;
+        if (i < lives) {
+            glColor3f(0.95f, 0.38f, 0.42f);
+            for (int r = 1; r <= 5; ++r) {
+                drawBresenhamCircle(lx, ly, r);
+            }
+        } else {
+            glColor3f(0.35f, 0.38f, 0.45f);
+            drawBresenhamCircle(lx, ly, 5);
+        }
+    }
+    glPointSize(1.0f);
+}
+
+void drawStatusBanner(const char* title, const char* subtitle, float r, float g, float b) {
+    float boxW = 420.0f;
+    float boxH = 110.0f;
+    float boxX = (Config::WINDOW_WIDTH - boxW) / 2.0f;
+    float boxY = (Config::WINDOW_HEIGHT - boxH) / 2.0f - 20.0f;
+
+    // Banner background
+    glColor3f(0.11f, 0.13f, 0.19f);
+    glBegin(GL_QUADS);
+        glVertex2f(boxX, boxY);
+        glVertex2f(boxX + boxW, boxY);
+        glVertex2f(boxX + boxW, boxY + boxH);
+        glVertex2f(boxX, boxY + boxH);
+    glEnd();
+
+    // Banner border
+    glColor3f(r, g, b);
+    glLineWidth(2.0f);
+    glBegin(GL_LINE_LOOP);
+        glVertex2f(boxX, boxY);
+        glVertex2f(boxX + boxW, boxY);
+        glVertex2f(boxX + boxW, boxY + boxH);
+        glVertex2f(boxX, boxY + boxH);
+    glEnd();
+
+    // Title and subtitle text
+    glColor3f(r, g, b);
+    drawCenteredText(Config::WINDOW_WIDTH / 2.0f, boxY + 66.0f, GLUT_BITMAP_HELVETICA_18, title);
+
+    glColor3f(0.88f, 0.91f, 0.96f);
+    drawCenteredText(Config::WINDOW_WIDTH / 2.0f, boxY + 32.0f, GLUT_BITMAP_9_BY_15, subtitle);
+}
+
+void drawStatusOverlay() {
+    char subBuf[96];
+    if (gameState == STATE_READY) {
+        drawStatusBanner(
+            "READY",
+            "Press SPACE to Launch  |  Left/Right to Move",
+            0.35f, 0.80f, 0.98f
+        );
+    } else if (gameState == STATE_PAUSED) {
+        drawStatusBanner(
+            "GAME PAUSED",
+            "Press P to Resume  |  Press R to Restart",
+            0.96f, 0.80f, 0.28f
+        );
+    } else if (gameState == STATE_WON) {
+        std::snprintf(subBuf, sizeof(subBuf), "Final Score: %d  |  Press R to Play Again", score);
+        drawStatusBanner(
+            "YOU WIN! ALL BRICKS CLEARED!",
+            subBuf,
+            0.36f, 0.86f, 0.52f
+        );
+    } else if (gameState == STATE_GAME_OVER) {
+        std::snprintf(subBuf, sizeof(subBuf), "Final Score: %d  |  Press R to Restart", score);
+        drawStatusBanner(
+            "GAME OVER",
+            subBuf,
+            0.95f, 0.36f, 0.36f
+        );
+    }
+}
+
 bool checkCircleRectCollision(float rx, float ry, float rw, float rh, float& closestX, float& closestY) {
     closestX = std::max(rx, std::min(ballX, rx + rw));
     closestY = std::max(ry, std::min(ballY, ry + rh));
@@ -214,9 +366,17 @@ void stepBallPhysics(float subDt) {
         ballVY = -std::fabs(ballVY);
     }
 
-    // Bottom wall miss -> reset ball on paddle
+    // Bottom wall miss -> lose 1 life
     if (ballY - r < Config::FIELD_BOTTOM) {
-        resetBallOnPaddle();
+        lives--;
+        if (lives > 0) {
+            gameState = STATE_READY;
+            resetBallOnPaddle();
+        } else {
+            lives = 0;
+            gameState = STATE_GAME_OVER;
+            resetBallOnPaddle();
+        }
         return;
     }
 
@@ -224,10 +384,8 @@ void stepBallPhysics(float subDt) {
     float closestX = 0.0f, closestY = 0.0f;
     if (ballVY < 0.0f &&
         checkCircleRectCollision(paddleX, Config::PADDLE_Y, Config::PADDLE_WIDTH, Config::PADDLE_HEIGHT, closestX, closestY)) {
-        // Resolve contact above paddle before reflecting
         ballY = Config::PADDLE_Y + Config::PADDLE_HEIGHT + r + 0.5f;
 
-        // Calculate deflection angle based on hit location relative to paddle center
         float paddleCenter = paddleX + Config::PADDLE_WIDTH / 2.0f;
         float hitOffset = (ballX - paddleCenter) / (Config::PADDLE_WIDTH / 2.0f);
         hitOffset = std::max(-1.0f, std::min(1.0f, hitOffset));
@@ -237,7 +395,7 @@ void stepBallPhysics(float subDt) {
         ballVY = Config::BALL_SPEED * std::cos(bounceAngle);
     }
 
-    // 3. Brick collisions (handle one brick per sub-step for clean reflection)
+    // 3. Brick collisions (each brick is destroyed and scored once)
     for (int row = 0; row < Config::BRICK_ROWS; ++row) {
         bool hitBrick = false;
         for (int col = 0; col < Config::BRICK_COLS; ++col) {
@@ -247,8 +405,9 @@ void stepBallPhysics(float subDt) {
             float by = bricks[row][col].y;
             if (checkCircleRectCollision(bx, by, Config::BRICK_WIDTH, Config::BRICK_HEIGHT, closestX, closestY)) {
                 bricks[row][col].active = false;
+                score += Config::POINTS_PER_BRICK;
+                remainingBricks--;
 
-                // Determine horizontal vs vertical contact normal
                 float overlapLeft   = (ballX + r) - bx;
                 float overlapRight  = (bx + Config::BRICK_WIDTH) - (ballX - r);
                 float overlapBottom = (ballY + r) - by;
@@ -275,6 +434,12 @@ void stepBallPhysics(float subDt) {
                     }
                 }
 
+                if (remainingBricks <= 0) {
+                    gameState = STATE_WON;
+                    ballVX = 0.0f;
+                    ballVY = 0.0f;
+                }
+
                 hitBrick = true;
                 break;
             }
@@ -284,6 +449,11 @@ void stepBallPhysics(float subDt) {
 }
 
 void update(float dt) {
+    // Prevent all movement while paused, won, or game over
+    if (gameState == STATE_PAUSED || gameState == STATE_WON || gameState == STATE_GAME_OVER) {
+        return;
+    }
+
     if (moveLeft) {
         paddleX -= Config::PADDLE_SPEED * dt;
     }
@@ -299,13 +469,13 @@ void update(float dt) {
         paddleX = Config::FIELD_RIGHT - Config::PADDLE_WIDTH;
     }
 
-    if (!ballLaunched) {
+    if (gameState == STATE_READY) {
         ballX = paddleX + Config::PADDLE_WIDTH / 2.0f;
         ballY = Config::PADDLE_Y + Config::PADDLE_HEIGHT + Config::BALL_RADIUS + 1.0f;
-    } else {
+    } else if (gameState == STATE_PLAYING) {
         float subDt = dt / Config::SIM_SUBSTEPS;
         for (int i = 0; i < Config::SIM_SUBSTEPS; ++i) {
-            if (!ballLaunched) break;
+            if (gameState != STATE_PLAYING) break;
             stepBallPhysics(subDt);
         }
     }
@@ -316,9 +486,11 @@ void display() {
     glLoadIdentity();
 
     drawBoundaries();
+    drawHUD();
     drawBricks();
     drawPaddle();
     drawBall();
+    drawStatusOverlay();
 
     glutSwapBuffers();
 }
@@ -371,6 +543,8 @@ void keyboardDown(unsigned char key, int x, int y) {
     if (key == 'a' || key == 'A') moveLeft = true;
     if (key == 'd' || key == 'D') moveRight = true;
     if (key == ' ') launchBall();
+    if (key == 'p' || key == 'P') togglePause();
+    if (key == 'r' || key == 'R') resetGame();
     if (key == 27) exit(0);
 }
 

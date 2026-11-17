@@ -35,6 +35,10 @@ namespace Config {
     const float BRICK_PADDING_Y = 6.0f;
     const float BRICK_START_X = 43.0f;
     const float BRICK_START_Y = 490.0f;
+
+    // Gameplay rules
+    const int INITIAL_LIVES = 3;
+    const int POINTS_PER_BRICK = 10;
 }
 
 #endif
