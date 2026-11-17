@@ -11,12 +11,16 @@ enum GameState {
     STATE_READY,
     STATE_PLAYING,
     STATE_PAUSED,
+    STATE_LEVEL_CLEAR,
     STATE_WON,
     STATE_GAME_OVER
 };
 
 struct Brick {
     float x, y;
+    int hp;
+    int maxHp;
+    float hitFlash;
     bool active;
 };
 
@@ -32,7 +36,8 @@ struct Particle {
 
 struct ScorePopup {
     float x, y;
-    int points;
+    char text[24];
+    float r, g, b;
     float life;
     bool active;
 };
@@ -42,21 +47,29 @@ struct TrailPoint {
     bool valid;
 };
 
+struct Ball {
+    float x, y;
+    float vx, vy;
+    bool active;
+    int colorIndex;
+    TrailPoint trail[Config::BALL_TRAIL_LENGTH];
+    int trailHead;
+    float trailSampleTimer;
+};
+
 // Global game state variables
 GameState gameState = STATE_READY;
 GameState stateBeforePause = STATE_READY;
+int currentLevel = 1;
 int score = 0;
 int highScore = 0;
 int comboStreak = 0;
 int lives = Config::INITIAL_LIVES;
 int remainingBricks = Config::BRICK_ROWS * Config::BRICK_COLS;
 
-// Paddle and ball state
+// Paddle and multi-ball state
 float paddleX = (Config::WINDOW_WIDTH - Config::PADDLE_WIDTH) / 2.0f;
-float ballX = Config::WINDOW_WIDTH / 2.0f;
-float ballY = Config::PADDLE_Y + Config::PADDLE_HEIGHT + Config::BALL_RADIUS + 1.0f;
-float ballVX = 0.0f;
-float ballVY = 0.0f;
+Ball balls[Config::MAX_BALLS];
 float paddleFlashTimer = 0.0f;
 float screenShakeTimer = 0.0f;
 
@@ -79,8 +92,5 @@ int currentWinH = Config::WINDOW_HEIGHT;
 Brick bricks[Config::BRICK_ROWS][Config::BRICK_COLS];
 Particle particles[Config::MAX_PARTICLES];
 ScorePopup popups[Config::MAX_POPUPS];
-TrailPoint ballTrail[Config::BALL_TRAIL_LENGTH];
-int trailHead = 0;
-float trailSampleTimer = 0.0f;
 
 #endif

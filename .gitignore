@@ -9,6 +9,7 @@ build/
 # IDE and Editor files
 .vscode/
 .vs/
+.clangd
 *.layout
 *.depend
 *.cbp.mak

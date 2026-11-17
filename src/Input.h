@@ -85,7 +85,13 @@ inline void mouseClick(int button, int state, int x, int y) {
             return;
         }
 
-        // 3. Inside playfield: drag paddle and/or launch ball
+        // 3. If Level Clear, clicking inside playfield advances to next level
+        if (gameState == STATE_LEVEL_CLEAR) {
+            launchBall();
+            return;
+        }
+
+        // 4. Inside playfield: drag paddle and/or launch ball
         if (wy <= Config::FIELD_TOP && (gameState == STATE_READY || gameState == STATE_PLAYING)) {
             isDraggingPaddle = true;
             paddleX = wx - Config::PADDLE_WIDTH * 0.5f;
