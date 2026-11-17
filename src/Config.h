@@ -19,12 +19,13 @@ namespace Config {
     const float PADDLE_WIDTH = 110.0f;
     const float PADDLE_HEIGHT = 14.0f;
     const float PADDLE_Y = 40.0f;
-    const float PADDLE_SPEED = 450.0f;
+    const float PADDLE_SPEED = 460.0f;
 
     // Ball settings
     const int BALL_RADIUS = 8;
-    const float BALL_SPEED = 340.0f;
+    const float BALL_SPEED = 350.0f;
     const float MAX_BOUNCE_ANGLE = 1.05f; // ~60 degrees in radians
+    const int BALL_TRAIL_LENGTH = 10;
 
     // Brick grid settings
     const int BRICK_ROWS = 5;
@@ -35,6 +36,10 @@ namespace Config {
     const float BRICK_PADDING_Y = 6.0f;
     const float BRICK_START_X = 43.0f;
     const float BRICK_START_Y = 490.0f;
+
+    // Visual effects limits
+    const int MAX_PARTICLES = 160;
+    const int MAX_POPUPS = 16;
 
     // Gameplay rules
     const int INITIAL_LIVES = 3;
