@@ -61,7 +61,17 @@ float screenShakeTimer = 0.0f;
 
 bool moveLeft = false;
 bool moveRight = false;
+bool isDraggingPaddle = false;
+bool hoverPauseBtn = false;
+bool hoverRestartBtn = false;
 int lastTimeMs = 0;
+
+// Current viewport for mouse/touch coordinate mapping
+int currentVpX = 0;
+int currentVpY = 0;
+int currentVpW = Config::WINDOW_WIDTH;
+int currentVpH = Config::WINDOW_HEIGHT;
+int currentWinH = Config::WINDOW_HEIGHT;
 
 Brick bricks[Config::BRICK_ROWS][Config::BRICK_COLS];
 Particle particles[Config::MAX_PARTICLES];
@@ -127,6 +137,19 @@ void spawnScorePopup(float x, float y, int pts) {
             popups[i].active = true;
             break;
         }
+    }
+}
+
+void clampPaddle() {
+    if (paddleX < Config::FIELD_LEFT) {
+        paddleX = Config::FIELD_LEFT;
+    }
+    if (paddleX + Config::PADDLE_WIDTH > Config::FIELD_RIGHT) {
+        paddleX = Config::FIELD_RIGHT - Config::PADDLE_WIDTH;
+    }
+    if (gameState == STATE_READY) {
+        ballX = paddleX + Config::PADDLE_WIDTH / 2.0f;
+        ballY = Config::PADDLE_Y + Config::PADDLE_HEIGHT + Config::BALL_RADIUS + 1.0f;
     }
 }
 
@@ -417,7 +440,7 @@ void drawBricks() {
                 glVertex2f(bx, by + bh);
             glEnd();
 
-            // Top & left 3D highlight bevel
+            // Top 3D highlight bevel
             glColor4f(1.0f, 1.0f, 1.0f, 0.32f);
             glBegin(GL_QUADS);
                 glVertex2f(bx, by + bh - 3.0f);
@@ -495,7 +518,6 @@ void drawBallAndTrail() {
 }
 
 void drawParticlesAndPopups() {
-    // Brick destruction particles
     for (int i = 0; i < Config::MAX_PARTICLES; ++i) {
         if (!particles[i].active) continue;
         float alpha = particles[i].life / particles[i].maxLife;
@@ -509,7 +531,6 @@ void drawParticlesAndPopups() {
         glEnd();
     }
 
-    // Floating "+10" score popups
     for (int i = 0; i < Config::MAX_POPUPS; ++i) {
         if (!popups[i].active) continue;
         float alpha = std::min(1.0f, popups[i].life / 0.75f);
@@ -520,6 +541,34 @@ void drawParticlesAndPopups() {
     }
 }
 
+void drawHUDButton(float x, float y, float w, float h, const char* label, bool hovered, bool activeAccent) {
+    if (hovered) {
+        glColor4f(0.24f, 0.52f, 0.85f, 0.90f);
+    } else if (activeAccent) {
+        glColor4f(0.85f, 0.62f, 0.15f, 0.85f);
+    } else {
+        glColor4f(0.14f, 0.18f, 0.28f, 0.90f);
+    }
+    glBegin(GL_QUADS);
+        glVertex2f(x, y);
+        glVertex2f(x + w, y);
+        glVertex2f(x + w, y + h);
+        glVertex2f(x, y + h);
+    glEnd();
+
+    glColor3f(hovered ? 0.65f : 0.35f, hovered ? 0.88f : 0.52f, 0.95f);
+    glLineWidth(1.2f);
+    glBegin(GL_LINE_LOOP);
+        glVertex2f(x, y);
+        glVertex2f(x + w, y);
+        glVertex2f(x + w, y + h);
+        glVertex2f(x, y + h);
+    glEnd();
+
+    glColor3f(0.95f, 0.97f, 1.0f);
+    drawCenteredText(x + w * 0.5f, y + 9.0f, GLUT_BITMAP_HELVETICA_12, label);
+}
+
 void drawHUD() {
     // Score & High Score on the left
     char scoreBuf[64];
@@ -528,27 +577,46 @@ void drawHUD() {
     glColor3f(0.95f, 0.97f, 1.0f);
     drawText(Config::FIELD_LEFT + 2.0f, 565.0f, GLUT_BITMAP_HELVETICA_18, scoreBuf);
 
-    // Combo badge or controls summary in the center
+    // Center streak or input guide
     if (comboStreak >= 2 && gameState == STATE_PLAYING) {
         char comboBuf[48];
         std::snprintf(comboBuf, sizeof(comboBuf), "STREAK x%d!", comboStreak);
         glColor3f(0.98f, 0.82f, 0.25f);
-        drawCenteredText(Config::WINDOW_WIDTH / 2.0f, 566.0f, GLUT_BITMAP_HELVETICA_18, comboBuf);
+        drawCenteredText(340.0f, 566.0f, GLUT_BITMAP_HELVETICA_18, comboBuf);
     } else {
         glColor3f(0.68f, 0.76f, 0.90f);
         drawCenteredText(
-            Config::WINDOW_WIDTH / 2.0f + 15.0f,
+            340.0f,
             567.0f,
             GLUT_BITMAP_HELVETICA_12,
-            "Left/Right: Move  |  SPACE: Launch  |  P: Pause  |  R: Restart"
+            "Arrows / Drag: Move  |  Click / SPACE: Launch"
         );
     }
 
+    // Clickable Pause/Resume & Restart buttons
+    const char* pauseLabel = (gameState == STATE_PAUSED) ? "RESUME (P)" : "PAUSE (P)";
+    drawHUDButton(
+        Config::BTN_PAUSE_X,
+        Config::BTN_Y,
+        Config::BTN_W,
+        Config::BTN_H,
+        pauseLabel,
+        hoverPauseBtn,
+        gameState == STATE_PAUSED
+    );
+    drawHUDButton(
+        Config::BTN_RESTART_X,
+        Config::BTN_Y,
+        Config::BTN_W,
+        Config::BTN_H,
+        "RESTART (R)",
+        hoverRestartBtn,
+        false
+    );
+
     // Lives text and Bresenham circle indicators on the right
-    char livesBuf[32];
-    std::snprintf(livesBuf, sizeof(livesBuf), "LIVES:");
     glColor3f(0.95f, 0.97f, 1.0f);
-    drawText(Config::FIELD_RIGHT - 122.0f, 565.0f, GLUT_BITMAP_HELVETICA_18, livesBuf);
+    drawText(Config::FIELD_RIGHT - 122.0f, 565.0f, GLUT_BITMAP_HELVETICA_18, "LIVES:");
 
     glPointSize(1.5f);
     for (int i = 0; i < Config::INITIAL_LIVES; ++i) {
@@ -570,7 +638,7 @@ void drawHUD() {
 }
 
 void drawStatusBanner(const char* title, const char* subtitle, float r, float g, float b) {
-    float boxW = 450.0f;
+    float boxW = 460.0f;
     float boxH = 118.0f;
     float boxX = (Config::WINDOW_WIDTH - boxW) / 2.0f;
     float boxY = (Config::WINDOW_HEIGHT - boxH) / 2.0f - 25.0f;
@@ -625,24 +693,24 @@ void drawStatusOverlay() {
     if (gameState == STATE_READY) {
         drawStatusBanner(
             "READY TO LAUNCH",
-            "Press SPACE to Launch  |  Left/Right to Aim & Move",
+            "Press SPACE or Click/Tap Playfield to Launch",
             0.35f, 0.82f, 0.98f
         );
     } else if (gameState == STATE_PAUSED) {
         drawStatusBanner(
             "GAME PAUSED",
-            "Press P to Resume  |  Press R to Restart",
+            "Press P or Click RESUME  |  Press R to Restart",
             0.98f, 0.82f, 0.28f
         );
     } else if (gameState == STATE_WON) {
-        std::snprintf(subBuf, sizeof(subBuf), "Final Score: %d  |  Press R or SPACE to Play Again", score);
+        std::snprintf(subBuf, sizeof(subBuf), "Final Score: %d  |  Click or Press R / SPACE", score);
         drawStatusBanner(
             "YOU WIN! ALL BRICKS CLEARED!",
             subBuf,
             0.32f, 0.90f, 0.56f
         );
     } else if (gameState == STATE_GAME_OVER) {
-        std::snprintf(subBuf, sizeof(subBuf), "Final Score: %d  |  Press R or SPACE to Restart", score);
+        std::snprintf(subBuf, sizeof(subBuf), "Final Score: %d  |  Click or Press R / SPACE", score);
         drawStatusBanner(
             "GAME OVER",
             subBuf,
@@ -672,7 +740,7 @@ void updateEffects(float dt) {
         if (!particles[i].active) continue;
         particles[i].x += particles[i].vx * dt;
         particles[i].y += particles[i].vy * dt;
-        particles[i].vy -= 180.0f * dt; // subtle gravity on debris
+        particles[i].vy -= 180.0f * dt;
         particles[i].life -= dt;
         if (particles[i].life <= 0.0f) {
             particles[i].active = false;
@@ -757,7 +825,6 @@ void stepBallPhysics(float subDt) {
                 remainingBricks--;
                 comboStreak++;
 
-                // Spawn visual effects
                 float centerBrickX = bx + Config::BRICK_WIDTH * 0.5f;
                 float centerBrickY = by + Config::BRICK_HEIGHT * 0.5f;
                 spawnBrickParticles(centerBrickX, centerBrickY, ROW_COLORS[row]);
@@ -806,7 +873,6 @@ void stepBallPhysics(float subDt) {
 void update(float dt) {
     updateEffects(dt);
 
-    // Prevent gameplay movement while paused, won, or game over
     if (gameState == STATE_PAUSED || gameState == STATE_WON || gameState == STATE_GAME_OVER) {
         return;
     }
@@ -818,18 +884,9 @@ void update(float dt) {
         paddleX += Config::PADDLE_SPEED * dt;
     }
 
-    // Clamp paddle inside playfield boundaries
-    if (paddleX < Config::FIELD_LEFT) {
-        paddleX = Config::FIELD_LEFT;
-    }
-    if (paddleX + Config::PADDLE_WIDTH > Config::FIELD_RIGHT) {
-        paddleX = Config::FIELD_RIGHT - Config::PADDLE_WIDTH;
-    }
+    clampPaddle();
 
-    if (gameState == STATE_READY) {
-        ballX = paddleX + Config::PADDLE_WIDTH / 2.0f;
-        ballY = Config::PADDLE_Y + Config::PADDLE_HEIGHT + Config::BALL_RADIUS + 1.0f;
-    } else if (gameState == STATE_PLAYING) {
+    if (gameState == STATE_PLAYING) {
         trailSampleTimer += dt;
         if (trailSampleTimer >= 0.014f) {
             trailSampleTimer = 0.0f;
@@ -871,25 +928,102 @@ void display() {
 
 void reshape(int w, int h) {
     if (h == 0) h = 1;
+    currentWinH = h;
 
     float targetAspect = static_cast<float>(Config::WINDOW_WIDTH) / Config::WINDOW_HEIGHT;
     float windowAspect = static_cast<float>(w) / h;
 
-    int vpX = 0, vpY = 0, vpW = w, vpH = h;
+    currentVpX = 0;
+    currentVpY = 0;
+    currentVpW = w;
+    currentVpH = h;
     if (windowAspect > targetAspect) {
-        vpW = static_cast<int>(h * targetAspect);
-        vpX = (w - vpW) / 2;
+        currentVpW = static_cast<int>(h * targetAspect);
+        currentVpX = (w - currentVpW) / 2;
     } else {
-        vpH = static_cast<int>(w / targetAspect);
-        vpY = (h - vpH) / 2;
+        currentVpH = static_cast<int>(w / targetAspect);
+        currentVpY = (h - currentVpH) / 2;
     }
 
-    glViewport(vpX, vpY, vpW, vpH);
+    glViewport(currentVpX, currentVpY, currentVpW, currentVpH);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     gluOrtho2D(0.0, Config::WINDOW_WIDTH, 0.0, Config::WINDOW_HEIGHT);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
+}
+
+// Convert window pixel coordinates (mx, my) into logical scene coordinates (wx, wy)
+bool windowToWorld(int mx, int my, float& wx, float& wy) {
+    int glY = currentWinH - my;
+    if (currentVpW <= 0 || currentVpH <= 0) return false;
+    wx = static_cast<float>(mx - currentVpX) / currentVpW * Config::WINDOW_WIDTH;
+    wy = static_cast<float>(glY - currentVpY) / currentVpH * Config::WINDOW_HEIGHT;
+    return (wx >= 0.0f && wx <= Config::WINDOW_WIDTH && wy >= 0.0f && wy <= Config::WINDOW_HEIGHT);
+}
+
+bool pointInRect(float px, float py, float rx, float ry, float rw, float rh) {
+    return (px >= rx && px <= rx + rw && py >= ry && py <= ry + rh);
+}
+
+void mouseClick(int button, int state, int x, int y) {
+    if (button != GLUT_LEFT_BUTTON) return;
+
+    float wx = 0.0f, wy = 0.0f;
+    if (!windowToWorld(x, y, wx, wy)) return;
+
+    if (state == GLUT_DOWN) {
+        // 1. Check HUD Pause / Restart buttons
+        if (pointInRect(wx, wy, Config::BTN_PAUSE_X, Config::BTN_Y, Config::BTN_W, Config::BTN_H)) {
+            togglePause();
+            return;
+        }
+        if (pointInRect(wx, wy, Config::BTN_RESTART_X, Config::BTN_Y, Config::BTN_W, Config::BTN_H)) {
+            resetGame();
+            return;
+        }
+
+        // 2. If Won or Game Over, clicking in playfield restarts
+        if (gameState == STATE_WON || gameState == STATE_GAME_OVER) {
+            resetGame();
+            return;
+        }
+
+        // 3. Inside playfield: drag paddle and/or launch ball
+        if (wy <= Config::FIELD_TOP) {
+            isDraggingPaddle = true;
+            if (gameState == STATE_READY || gameState == STATE_PLAYING) {
+                paddleX = wx - Config::PADDLE_WIDTH * 0.5f;
+                clampPaddle();
+            }
+            if (gameState == STATE_READY && wy > Config::PADDLE_Y + Config::PADDLE_HEIGHT + 20.0f) {
+                launchBall();
+            }
+        }
+    } else if (state == GLUT_UP) {
+        isDraggingPaddle = false;
+    }
+}
+
+void mouseMotion(int x, int y) {
+    float wx = 0.0f, wy = 0.0f;
+    if (!windowToWorld(x, y, wx, wy)) return;
+
+    if (isDraggingPaddle && (gameState == STATE_READY || gameState == STATE_PLAYING)) {
+        paddleX = wx - Config::PADDLE_WIDTH * 0.5f;
+        clampPaddle();
+    }
+}
+
+void mousePassiveMotion(int x, int y) {
+    float wx = 0.0f, wy = 0.0f;
+    if (!windowToWorld(x, y, wx, wy)) {
+        hoverPauseBtn = false;
+        hoverRestartBtn = false;
+        return;
+    }
+    hoverPauseBtn = pointInRect(wx, wy, Config::BTN_PAUSE_X, Config::BTN_Y, Config::BTN_W, Config::BTN_H);
+    hoverRestartBtn = pointInRect(wx, wy, Config::BTN_RESTART_X, Config::BTN_Y, Config::BTN_W, Config::BTN_H);
 }
 
 void timer(int val) {
@@ -948,6 +1082,9 @@ int main(int argc, char** argv) {
     glutSpecialUpFunc(specialUp);
     glutKeyboardFunc(keyboardDown);
     glutKeyboardUpFunc(keyboardUp);
+    glutMouseFunc(mouseClick);
+    glutMotionFunc(mouseMotion);
+    glutPassiveMotionFunc(mousePassiveMotion);
     glutTimerFunc(Config::TIMER_MS, timer, 0);
 
     glutMainLoop();

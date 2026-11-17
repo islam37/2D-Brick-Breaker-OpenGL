@@ -37,6 +37,13 @@ namespace Config {
     const float BRICK_START_X = 43.0f;
     const float BRICK_START_Y = 490.0f;
 
+    // Top HUD interactive buttons (for mouse / touchscreen)
+    const float BTN_Y = 556.0f;
+    const float BTN_W = 78.0f;
+    const float BTN_H = 28.0f;
+    const float BTN_PAUSE_X = 460.0f;
+    const float BTN_RESTART_X = 546.0f;
+
     // Visual effects limits
     const int MAX_PARTICLES = 160;
     const int MAX_POPUPS = 16;
