@@ -102,9 +102,8 @@ inline void drawBackgroundAndBoundaries() {
 inline void drawAimGuide() {
     if (gameState != STATE_READY) return;
 
-    float initialAngle = 0.35f;
-    float dirX = std::sin(initialAngle);
-    float dirY = std::cos(initialAngle);
+    float dirX = std::sin(Config::INITIAL_LAUNCH_ANGLE);
+    float dirY = std::cos(Config::INITIAL_LAUNCH_ANGLE);
 
     glPointSize(3.0f);
     glBegin(GL_POINTS);
@@ -342,14 +341,14 @@ inline void drawHUD() {
         char comboBuf[48];
         std::snprintf(comboBuf, sizeof(comboBuf), "STREAK x%d!", comboStreak);
         glColor3f(0.98f, 0.82f, 0.25f);
-        drawCenteredText(340.0f, 566.0f, GLUT_BITMAP_HELVETICA_18, comboBuf);
+        drawCenteredText(344.0f, 566.0f, GLUT_BITMAP_HELVETICA_18, comboBuf);
     } else {
         glColor3f(0.68f, 0.76f, 0.90f);
         drawCenteredText(
-            340.0f,
+            344.0f,
             567.0f,
             GLUT_BITMAP_HELVETICA_12,
-            "Arrows / Drag: Move  |  Click / SPACE: Launch"
+            "Arrows/Drag: Move | SPACE: Launch"
         );
     }
 

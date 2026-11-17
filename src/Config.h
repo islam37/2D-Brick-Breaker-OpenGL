@@ -31,6 +31,7 @@ namespace Config {
     // Ball parameters
     const int BALL_RADIUS = 8;
     const float BALL_SPEED = 350.0f;
+    const float INITIAL_LAUNCH_ANGLE = 0.35f; // ~20 degrees right of vertical
     const float MAX_BOUNCE_ANGLE = 1.05f; // ~60 degrees in radians
     const int BALL_TRAIL_LENGTH = 10;
 
@@ -46,10 +47,10 @@ namespace Config {
 
     // Top HUD interactive buttons (for mouse / touchscreen)
     const float BTN_Y = 556.0f;
-    const float BTN_W = 78.0f;
+    const float BTN_W = 84.0f;
     const float BTN_H = 28.0f;
-    const float BTN_PAUSE_X = 460.0f;
-    const float BTN_RESTART_X = 546.0f;
+    const float BTN_PAUSE_X = 462.0f;
+    const float BTN_RESTART_X = 554.0f;
 
     // Visual effects limits
     const int MAX_PARTICLES = 160;

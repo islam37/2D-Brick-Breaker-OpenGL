@@ -84,6 +84,8 @@ inline void resetBallOnPaddle() {
     for (int i = 0; i < Config::BALL_TRAIL_LENGTH; ++i) {
         ballTrail[i].valid = false;
     }
+    trailHead = 0;
+    trailSampleTimer = 0.0f;
 }
 
 inline void initBricks() {
@@ -113,9 +115,8 @@ inline void resetGame() {
 inline void launchBall() {
     if (gameState == STATE_READY) {
         gameState = STATE_PLAYING;
-        float initialAngle = 0.35f; // ~20 degrees right of vertical
-        ballVX = Config::BALL_SPEED * std::sin(initialAngle);
-        ballVY = Config::BALL_SPEED * std::cos(initialAngle);
+        ballVX = Config::BALL_SPEED * std::sin(Config::INITIAL_LAUNCH_ANGLE);
+        ballVY = Config::BALL_SPEED * std::cos(Config::INITIAL_LAUNCH_ANGLE);
     }
 }
 

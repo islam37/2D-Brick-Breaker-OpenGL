@@ -60,6 +60,11 @@ inline void keyboardUp(unsigned char key, int x, int y) {
 inline void mouseClick(int button, int state, int x, int y) {
     if (button != GLUT_LEFT_BUTTON) return;
 
+    if (state == GLUT_UP) {
+        isDraggingPaddle = false;
+        return;
+    }
+
     float wx = 0.0f, wy = 0.0f;
     if (!windowToWorld(x, y, wx, wy)) return;
 
@@ -81,29 +86,25 @@ inline void mouseClick(int button, int state, int x, int y) {
         }
 
         // 3. Inside playfield: drag paddle and/or launch ball
-        if (wy <= Config::FIELD_TOP) {
+        if (wy <= Config::FIELD_TOP && (gameState == STATE_READY || gameState == STATE_PLAYING)) {
             isDraggingPaddle = true;
-            if (gameState == STATE_READY || gameState == STATE_PLAYING) {
-                paddleX = wx - Config::PADDLE_WIDTH * 0.5f;
-                clampPaddle();
-            }
+            paddleX = wx - Config::PADDLE_WIDTH * 0.5f;
+            clampPaddle();
             if (gameState == STATE_READY && wy > Config::PADDLE_Y + Config::PADDLE_HEIGHT + 20.0f) {
                 launchBall();
             }
         }
-    } else if (state == GLUT_UP) {
-        isDraggingPaddle = false;
     }
 }
 
 inline void mouseMotion(int x, int y) {
-    float wx = 0.0f, wy = 0.0f;
-    if (!windowToWorld(x, y, wx, wy)) return;
+    (void)y;
+    if (!isDraggingPaddle || (gameState != STATE_READY && gameState != STATE_PLAYING)) return;
+    if (currentVpW <= 0) return;
 
-    if (isDraggingPaddle && (gameState == STATE_READY || gameState == STATE_PLAYING)) {
-        paddleX = wx - Config::PADDLE_WIDTH * 0.5f;
-        clampPaddle();
-    }
+    float wx = static_cast<float>(x - currentVpX) / currentVpW * Config::WINDOW_WIDTH;
+    paddleX = wx - Config::PADDLE_WIDTH * 0.5f;
+    clampPaddle();
 }
 
 inline void mousePassiveMotion(int x, int y) {

@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>2D Brick Breaker - CSE 402 (Mobile & Web Edition)</title>
+  <style>
+    :root {
+      --bg: #0b0d17;
+      --panel: #121626;
+      --accent: #40c4ff;
+      --text: #eef3ff;
+      --muted: #9aa8c7;
+    }
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    body {
+      margin: 0;
+      padding: 8px;
+      background: radial-gradient(circle at top, #151b30 0%, #090b12 100%);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    header {
+      text-align: center;
+      margin: 4px 0 8px;
+    }
+    header h1 {
+      font-size: 1.15rem;
+      margin: 0;
+      color: #f4f7ff;
+      letter-spacing: 0.5px;
+    }
+    header p {
+      font-size: 0.78rem;
+      margin: 2px 0 0;
+      color: var(--muted);
+    }
+    .canvas-wrap {
+      width: 100%;
+      max-width: 800px;
+      aspect-ratio: 4 / 3;
+      position: relative;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(64, 196, 255, 0.25);
+      background: #0d0f1a;
+      touch-action: none;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+    }
+    .touch-controls {
+      width: 100%;
+      max-width: 800px;
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: 1.2fr 1.2fr 1fr 1fr 1.2fr;
+      gap: 8px;
+    }
+    .btn {
+      background: linear-gradient(180deg, #1d253d 0%, #13192b 100%);
+      color: var(--text);
+      border: 1px solid rgba(100, 165, 255, 0.35);
+      border-radius: 10px;
+      padding: 12px 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      touch-action: manipulation;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      transition: transform 0.08s ease, background 0.12s ease;
+    }
+    .btn:active, .btn.active {
+      transform: scale(0.96);
+      background: linear-gradient(180deg, #2b6cb0 0%, #1e4e8c 100%);
+      border-color: #7dd3fc;
+    }
+    .btn-launch {
+      background: linear-gradient(180deg, #0ea5e9 0%, #0284c7 100%);
+      border-color: #7dd3fc;
+    }
+    .hint {
+      margin-top: 8px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>2D Brick Breaker — CSE 402</h1>
+    <p>Islam Uddin (231-115-063) &amp; Yousuf Bin Nazib (231-115-064) • Metropolitan University</p>
+  </header>
+
+  <div class="canvas-wrap">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+  </div>
+
+  <div class="touch-controls">
+    <button class="btn" id="btnLeft">◀ Left</button>
+    <button class="btn" id="btnRight">Right ▶</button>
+    <button class="btn btn-launch" id="btnLaunch">Launch</button>
+    <button class="btn" id="btnPause">Pause</button>
+    <button class="btn" id="btnRestart">Restart</button>
+  </div>
+
+  <div class="hint">
+    📱 <strong>Mobile:</strong> Drag finger on the arena to move paddle, tap to launch • 💻 <strong>PC:</strong> Left/Right or Mouse Drag, Space to Launch, P to Pause, R to Restart
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // Logical Constants (matching src/Config.h)
+    const Config = {
+      WINDOW_WIDTH: 800,
+      WINDOW_HEIGHT: 600,
+      FIELD_LEFT: 20,
+      FIELD_RIGHT: 780,
+      FIELD_BOTTOM: 20,
+      FIELD_TOP: 540,
+      SIM_SUBSTEPS: 4,
+      PADDLE_WIDTH: 110,
+      PADDLE_HEIGHT: 14,
+      PADDLE_Y: 40,
+      PADDLE_SPEED: 460,
+      BALL_RADIUS: 8,
+      BALL_SPEED: 350,
+      MAX_BOUNCE_ANGLE: 1.05,
+      BALL_TRAIL_LENGTH: 10,
+      BRICK_ROWS: 5,
+      BRICK_COLS: 10,
+      BRICK_WIDTH: 66,
+      BRICK_HEIGHT: 22,
+      BRICK_PADDING_X: 6,
+      BRICK_PADDING_Y: 6,
+      BRICK_START_X: 43,
+      BRICK_START_Y: 490,
+      INITIAL_LIVES: 3,
+      POINTS_PER_BRICK: 10,
+      ROW_COLORS: [
+        [245, 79, 107],  // Row 0: Crimson Rose
+        [250, 148, 56],  // Row 1: Sunset Orange
+        [245, 214, 64],  // Row 2: Golden Amber
+        [61, 219, 138],  // Row 3: Emerald Mint
+        [66, 168, 250]   // Row 4: Electric Cyan-Blue
+      ]
+    };
+
+    const STATE_READY = 0, STATE_PLAYING = 1, STATE_PAUSED = 2, STATE_WON = 3, STATE_GAME_OVER = 4;
+    let gameState = STATE_READY;
+    let stateBeforePause = STATE_READY;
+    let score = 0, highScore = 0, comboStreak = 0, lives = Config.INITIAL_LIVES;
+    let remainingBricks = Config.BRICK_ROWS * Config.BRICK_COLS;
+
+    let paddleX = (Config.WINDOW_WIDTH - Config.PADDLE_WIDTH) / 2;
+    let ballX = Config.WINDOW_WIDTH / 2;
+    let ballY = Config.PADDLE_Y + Config.PADDLE_HEIGHT + Config.BALL_RADIUS + 1;
+    let ballVX = 0, ballVY = 0;
+    let paddleFlashTimer = 0, screenShakeTimer = 0;
+    let moveLeft = false, moveRight = false, isDragging = false;
+
+    const bricks = [];
+    const particles = [];
+    const popups = [];
+    const ballTrail = Array.from({ length: Config.BALL_TRAIL_LENGTH }, () => ({ x: 0, y: 0, valid: false }));
+    let trailHead = 0, trailSampleTimer = 0;
+
+    // Convert OpenGL Y (bottom-up) to Canvas Y (top-down)
+    const toCanvasY = (glY) => Config.WINDOW_HEIGHT - glY;
+
+    // Bresenham Circle Algorithm (matching src/Bresenham.h)
+    function drawBresenhamCircle(xc, yc, r, colorStr, ptSize = 1.5) {
+      let x = 0, y = r, d = 3 - 2 * r;
+      const cy = toCanvasY(yc);
+      ctx.fillStyle = colorStr;
+      const plot8 = (px, py) => {
+        ctx.fillRect(xc + px, cy + py, ptSize, ptSize);
+        ctx.fillRect(xc - px, cy + py, ptSize, ptSize);
+        ctx.fillRect(xc + px, cy - py, ptSize, ptSize);
+        ctx.fillRect(xc - px, cy - py, ptSize, ptSize);
+        ctx.fillRect(xc + py, cy + px, ptSize, ptSize);
+        ctx.fillRect(xc - py, cy + px, ptSize, ptSize);
+        ctx.fillRect(xc + py, cy - px, ptSize, ptSize);
+        ctx.fillRect(xc - py, cy - px, ptSize, ptSize);
+      };
+      while (x <= y) {
+        plot8(x, y);
+        if (d < 0) d = d + 4 * x + 6;
+        else { d = d + 4 * (x - y) + 10; y--; }
+        x++;
+      }
+    }
+
+    function initBricks() {
+      bricks.length = 0;
+      for (let r = 0; r < Config.BRICK_ROWS; r++) {
+        const row = [];
+        for (let c = 0; c < Config.BRICK_COLS; c++) {
+          row.push({
+            x: Config.BRICK_START_X + c * (Config.BRICK_WIDTH + Config.BRICK_PADDING_X),
+            y: Config.BRICK_START_Y - r * (Config.BRICK_HEIGHT + Config.BRICK_PADDING_Y),
+            active: true
+          });
+        }
+        bricks.push(row);
+      }
+      remainingBricks = Config.BRICK_ROWS * Config.BRICK_COLS;
+    }
+
+    function clampPaddle() {
+      if (paddleX < Config.FIELD_LEFT) paddleX = Config.FIELD_LEFT;
+      if (paddleX + Config.PADDLE_WIDTH > Config.FIELD_RIGHT) paddleX = Config.FIELD_RIGHT - Config.PADDLE_WIDTH;
+      if (gameState === STATE_READY) {
+        ballX = paddleX + Config.PADDLE_WIDTH / 2;
+        ballY = Config.PADDLE_Y + Config.PADDLE_HEIGHT + Config.BALL_RADIUS + 1;
+      }
+    }
+
+    function resetBallOnPaddle() {
+      ballVX = 0; ballVY = 0; comboStreak = 0;
+      ballX = paddleX + Config.PADDLE_WIDTH / 2;
+      ballY = Config.PADDLE_Y + Config.PADDLE_HEIGHT + Config.BALL_RADIUS + 1;
+      ballTrail.forEach(t => t.valid = false);
+    }
+
+    function resetGame() {
+      if (score > highScore) highScore = score;
+      score = 0; comboStreak = 0; lives = Config.INITIAL_LIVES;
+      paddleX = (Config.WINDOW_WIDTH - Config.PADDLE_WIDTH) / 2;
+      particles.length = 0; popups.length = 0;
+      paddleFlashTimer = 0; screenShakeTimer = 0;
+      initBricks();
+      resetBallOnPaddle();
+      gameState = STATE_READY;
+      stateBeforePause = STATE_READY;
+    }
+
+    function launchBall() {
+      if (gameState === STATE_WON || gameState === STATE_GAME_OVER) {
+        resetGame();
+        return;
+      }
+      if (gameState === STATE_READY) {
+        gameState = STATE_PLAYING;
+        const angle = 0.35;
+        ballVX = Config.BALL_SPEED * Math.sin(angle);
+        ballVY = Config.BALL_SPEED * Math.cos(angle);
+      }
+    }
+
+    function togglePause() {
+      if (gameState === STATE_PLAYING || gameState === STATE_READY) {
+        stateBeforePause = gameState;
+        gameState = STATE_PAUSED;
+      } else if (gameState === STATE_PAUSED) {
+        gameState = stateBeforePause;
+      }
+    }
+
+    function spawnBrickParticles(cx, cy, rgb) {
+      for (let i = 0; i < 16; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 50 + Math.random() * 140;
+        const maxLife = 0.35 + Math.random() * 0.25;
+        particles.push({
+          x: cx + (Math.random() * 24 - 12),
+          y: cy + (Math.random() * 10 - 5),
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          rgb, life: maxLife, maxLife,
+          size: 2.5 + Math.random() * 3
+        });
+      }
+    }
+
+    function checkCircleRect(rx, ry, rw, rh) {
+      const closestX = Math.max(rx, Math.min(ballX, rx + rw));
+      const closestY = Math.max(ry, Math.min(ballY, ry + rh));
+      const dx = ballX - closestX, dy = ballY - closestY;
+      return (dx * dx + dy * dy) <= (Config.BALL_RADIUS * Config.BALL_RADIUS);
+    }
+
+    function stepBallPhysics(subDt) {
+      const r = Config.BALL_RADIUS;
+      ballX += ballVX * subDt;
+      ballY += ballVY * subDt;
+
+      if (ballX - r <= Config.FIELD_LEFT) { ballX = Config.FIELD_LEFT + r; ballVX = Math.abs(ballVX); }
+      else if (ballX + r >= Config.FIELD_RIGHT) { ballX = Config.FIELD_RIGHT - r; ballVX = -Math.abs(ballVX); }
+
+      if (ballY + r >= Config.FIELD_TOP) { ballY = Config.FIELD_TOP - r; ballVY = -Math.abs(ballVY); }
+
+      if (ballY - r < Config.FIELD_BOTTOM) {
+        lives--;
+        screenShakeTimer = 0.22;
+        if (lives > 0) { gameState = STATE_READY; resetBallOnPaddle(); }
+        else { lives = 0; if (score > highScore) highScore = score; gameState = STATE_GAME_OVER; resetBallOnPaddle(); }
+        return;
+      }
+
+      if (ballVY < 0 && checkCircleRect(paddleX, Config.PADDLE_Y, Config.PADDLE_WIDTH, Config.PADDLE_HEIGHT)) {
+        ballY = Config.PADDLE_Y + Config.PADDLE_HEIGHT + r + 0.5;
+        paddleFlashTimer = 0.15;
+        comboStreak = 0;
+        const paddleCenter = paddleX + Config.PADDLE_WIDTH / 2;
+        const hitOffset = Math.max(-1, Math.min(1, (ballX - paddleCenter) / (Config.PADDLE_WIDTH / 2)));
+        const bounceAngle = hitOffset * Config.MAX_BOUNCE_ANGLE;
+        ballVX = Config.BALL_SPEED * Math.sin(bounceAngle);
+        ballVY = Config.BALL_SPEED * Math.cos(bounceAngle);
+      }
+
+      for (let row = 0; row < Config.BRICK_ROWS; row++) {
+        let hit = false;
+        for (let col = 0; col < Config.BRICK_COLS; col++) {
+          const b = bricks[row][col];
+          if (!b.active) continue;
+          if (checkCircleRect(b.x, b.y, Config.BRICK_WIDTH, Config.BRICK_HEIGHT)) {
+            b.active = false;
+            score += Config.POINTS_PER_BRICK;
+            if (score > highScore) highScore = score;
+            remainingBricks--;
+            comboStreak++;
+
+            const cbx = b.x + Config.BRICK_WIDTH * 0.5;
+            const cby = b.y + Config.BRICK_HEIGHT * 0.5;
+            spawnBrickParticles(cbx, cby, Config.ROW_COLORS[row]);
+            popups.push({ x: cbx, y: cby, pts: Config.POINTS_PER_BRICK, life: 0.75 });
+
+            const overlapLeft = (ballX + r) - b.x;
+            const overlapRight = (b.x + Config.BRICK_WIDTH) - (ballX - r);
+            const overlapBottom = (ballY + r) - b.y;
+            const overlapTop = (b.y + Config.BRICK_HEIGHT) - (ballY - r);
+            if (Math.min(overlapLeft, overlapRight) < Math.min(overlapBottom, overlapTop)) {
+              if (overlapLeft < overlapRight) { ballX = b.x - r - 0.5; ballVX = -Math.abs(ballVX); }
+              else { ballX = b.x + Config.BRICK_WIDTH + r + 0.5; ballVX = Math.abs(ballVX); }
+            } else {
+              if (overlapBottom < overlapTop) { ballY = b.y - r - 0.5; ballVY = -Math.abs(ballVY); }
+              else { ballY = b.y + Config.BRICK_HEIGHT + r + 0.5; ballVY = Math.abs(ballVY); }
+            }
+
+            if (remainingBricks <= 0) { gameState = STATE_WON; ballVX = 0; ballVY = 0; }
+            hit = true;
+            break;
+          }
+        }
+        if (hit) break;
+      }
+    }
+
+    function update(dt) {
+      if (paddleFlashTimer > 0) paddleFlashTimer = Math.max(0, paddleFlashTimer - dt);
+      if (screenShakeTimer > 0) screenShakeTimer = Math.max(0, screenShakeTimer - dt);
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy -= 180 * dt;
+        p.life -= dt;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+      for (let i = popups.length - 1; i >= 0; i--) {
+        popups[i].y += 38 * dt;
+        popups[i].life -= dt;
+        if (popups[i].life <= 0) popups.splice(i, 1);
+      }
+
+      if (gameState === STATE_PAUSED || gameState === STATE_WON || gameState === STATE_GAME_OVER) return;
+
+      if (moveLeft) paddleX -= Config.PADDLE_SPEED * dt;
+      if (moveRight) paddleX += Config.PADDLE_SPEED * dt;
+      clampPaddle();
+
+      if (gameState === STATE_PLAYING) {
+        trailSampleTimer += dt;
+        if (trailSampleTimer >= 0.014) {
+          trailSampleTimer = 0;
+          ballTrail[trailHead] = { x: ballX, y: ballY, valid: true };
+          trailHead = (trailHead + 1) % Config.BALL_TRAIL_LENGTH;
+        }
+        const subDt = dt / Config.SIM_SUBSTEPS;
+        for (let i = 0; i < Config.SIM_SUBSTEPS; i++) {
+          if (gameState !== STATE_PLAYING) break;
+          stepBallPhysics(subDt);
+        }
+      }
+    }
+
+    function fillGLRect(x, glY, w, h, style) {
+      ctx.fillStyle = style;
+      ctx.fillRect(x, toCanvasY(glY + h), w, h);
+    }
+
+    function strokeGLRect(x, glY, w, h, style, lw = 1) {
+      ctx.strokeStyle = style;
+      ctx.lineWidth = lw;
+      ctx.strokeRect(x, toCanvasY(glY + h), w, h);
+    }
+
+    function render() {
+      ctx.save();
+      ctx.fillStyle = "#0d0f1a";
+      ctx.fillRect(0, 0, Config.WINDOW_WIDTH, Config.WINDOW_HEIGHT);
+
+      if (screenShakeTimer > 0) {
+        ctx.translate((Math.random() * 6) - 3, (Math.random() * 6) - 3);
+      }
+
+      // Playfield gradient
+      const grad = ctx.createLinearGradient(0, toCanvasY(Config.FIELD_TOP), 0, toCanvasY(Config.FIELD_BOTTOM));
+      grad.addColorStop(0, "#192138");
+      grad.addColorStop(1, "#0f121f");
+      fillGLRect(Config.FIELD_LEFT, Config.FIELD_BOTTOM, Config.FIELD_RIGHT - Config.FIELD_LEFT, Config.FIELD_TOP - Config.FIELD_BOTTOM, grad);
+
+      // Subtle grid
+      ctx.strokeStyle = "rgba(64, 90, 140, 0.12)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = Config.FIELD_LEFT + 40; x < Config.FIELD_RIGHT; x += 40) {
+        ctx.moveTo(x, toCanvasY(Config.FIELD_BOTTOM));
+        ctx.lineTo(x, toCanvasY(Config.FIELD_TOP));
+      }
+      for (let y = Config.FIELD_BOTTOM + 40; y < Config.FIELD_TOP; y += 40) {
+        ctx.moveTo(Config.FIELD_LEFT, toCanvasY(y));
+        ctx.lineTo(Config.FIELD_RIGHT, toCanvasY(y));
+      }
+      ctx.stroke();
+
+      // Playfield borders
+      strokeGLRect(Config.FIELD_LEFT - 1.5, Config.FIELD_BOTTOM - 1.5, (Config.FIELD_RIGHT - Config.FIELD_LEFT) + 3, (Config.FIELD_TOP - Config.FIELD_BOTTOM) + 3, "rgba(56, 158, 242, 0.25)", 5);
+      strokeGLRect(Config.FIELD_LEFT, Config.FIELD_BOTTOM, Config.FIELD_RIGHT - Config.FIELD_LEFT, Config.FIELD_TOP - Config.FIELD_BOTTOM, "#66a6eb", 2);
+
+      // HUD bar
+      fillGLRect(0, Config.FIELD_TOP + 4, Config.WINDOW_WIDTH, Config.WINDOW_HEIGHT - (Config.FIELD_TOP + 4), "#141929");
+      ctx.strokeStyle = "#406194";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, toCanvasY(Config.FIELD_TOP + 4));
+      ctx.lineTo(Config.WINDOW_WIDTH, toCanvasY(Config.FIELD_TOP + 4));
+      ctx.stroke();
+
+      // HUD Text & Lives
+      ctx.fillStyle = "#f2f7ff";
+      ctx.font = "bold 17px system-ui, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(`SCORE: ${score}   BEST: ${highScore}`, Config.FIELD_LEFT + 2, toCanvasY(565));
+
+      ctx.textAlign = "center";
+      if (comboStreak >= 2 && gameState === STATE_PLAYING) {
+        ctx.fillStyle = "#fad140";
+        ctx.font = "bold 17px system-ui, sans-serif";
+        ctx.fillText(`STREAK x${comboStreak}!`, 400, toCanvasY(565));
+      } else {
+        ctx.fillStyle = "#aebfe0";
+        ctx.font = "13px system-ui, sans-serif";
+        ctx.fillText("Drag / Arrows: Move  |  Tap / SPACE: Launch", 400, toCanvasY(566));
+      }
+
+      ctx.fillStyle = "#f2f7ff";
+      ctx.font = "bold 17px system-ui, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("LIVES:", Config.FIELD_RIGHT - 122, toCanvasY(565));
+      for (let i = 0; i < Config.INITIAL_LIVES; i++) {
+        const lx = Config.FIELD_RIGHT - 46 + i * 19;
+        const ly = 571;
+        if (i < lives) {
+          for (let r = 1; r <= 6; r++) drawBresenhamCircle(lx, ly, r, "#f55770", 1.5);
+        } else {
+          drawBresenhamCircle(lx, ly, 6, "#525c75", 1.5);
+        }
+      }
+
+      // Bricks
+      for (let r = 0; r < Config.BRICK_ROWS; r++) {
+        const [cr, cg, cb] = Config.ROW_COLORS[r];
+        for (let c = 0; c < Config.BRICK_COLS; c++) {
+          const b = bricks[r][c];
+          if (!b.active) continue;
+          fillGLRect(b.x, b.y, Config.BRICK_WIDTH, Config.BRICK_HEIGHT, `rgb(${cr},${cg},${cb})`);
+          fillGLRect(b.x, b.y + Config.BRICK_HEIGHT - 3, Config.BRICK_WIDTH, 3, "rgba(255,255,255,0.32)");
+          fillGLRect(b.x, b.y, Config.BRICK_WIDTH, 3, "rgba(0,0,0,0.28)");
+          strokeGLRect(b.x, b.y, Config.BRICK_WIDTH, Config.BRICK_HEIGHT, "#141926", 1.2);
+        }
+      }
+
+      // Aim Guide
+      if (gameState === STATE_READY) {
+        const dirX = Math.sin(0.35), dirY = Math.cos(0.35);
+        for (let i = 1; i <= 7; i++) {
+          ctx.fillStyle = `rgba(115, 224, 255, ${0.65 - i * 0.07})`;
+          ctx.fillRect(ballX + dirX * (i * 16) - 1.5, toCanvasY(ballY + dirY * (i * 16)) - 1.5, 3, 3);
+        }
+      }
+
+      // Paddle
+      fillGLRect(paddleX - 3, Config.PADDLE_Y - 3, Config.PADDLE_WIDTH + 6, Config.PADDLE_HEIGHT + 6, "rgba(46, 184, 250, 0.22)");
+      fillGLRect(paddleX, Config.PADDLE_Y, Config.PADDLE_WIDTH, Config.PADDLE_HEIGHT, paddleFlashTimer > 0 ? "#7de2ff" : "#3bbcf5");
+      fillGLRect(paddleX + 2, Config.PADDLE_Y + Config.PADDLE_HEIGHT - 3, Config.PADDLE_WIDTH - 4, 3, "rgba(255,255,255,0.45)");
+      fillGLRect(paddleX, Config.PADDLE_Y, 8, Config.PADDLE_HEIGHT, "#fac23d");
+      fillGLRect(paddleX + Config.PADDLE_WIDTH - 8, Config.PADDLE_Y, 8, Config.PADDLE_HEIGHT, "#fac23d");
+      strokeGLRect(paddleX, Config.PADDLE_Y, Config.PADDLE_WIDTH, Config.PADDLE_HEIGHT, "#ccf5ff", 1.5);
+
+      // Ball & Bresenham Trail
+      if (gameState === STATE_PLAYING) {
+        for (let i = 0; i < Config.BALL_TRAIL_LENGTH; i++) {
+          const idx = (trailHead + i) % Config.BALL_TRAIL_LENGTH;
+          if (!ballTrail[idx].valid) continue;
+          const frac = (i + 1) / Config.BALL_TRAIL_LENGTH;
+          const tr = Math.max(2, Math.floor(Config.BALL_RADIUS * frac * 0.75));
+          drawBresenhamCircle(Math.round(ballTrail[idx].x), Math.round(ballTrail[idx].y), tr, `rgba(90, 210, 255, ${frac * 0.32})`, 1.5);
+        }
+      }
+      const cx = Math.round(ballX), cy = Math.round(ballY);
+      drawBresenhamCircle(cx, cy, Config.BALL_RADIUS + 2, "rgba(97, 217, 255, 0.35)", 2);
+      for (let r = 1; r < Config.BALL_RADIUS; r++) drawBresenhamCircle(cx, cy, r, "#e0f2ff", 2);
+      drawBresenhamCircle(cx, cy, Config.BALL_RADIUS, "#ffffff", 2);
+
+      // Particles & Popups
+      for (const p of particles) {
+        const [r, g, b] = p.rgb;
+        fillGLRect(p.x - p.size * 0.5, p.y - p.size * 0.5, p.size, p.size, `rgba(${r},${g},${b},${p.life / p.maxLife})`);
+      }
+      ctx.font = "bold 13px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      for (const pop of popups) {
+        ctx.fillStyle = `rgba(255, 235, 90, ${Math.min(1, pop.life / 0.75)})`;
+        ctx.fillText(`+${pop.pts}`, pop.x, toCanvasY(pop.y));
+      }
+
+      // Status Overlay Banner
+      const drawBanner = (title, sub, color) => {
+        const bw = 460, bh = 118, bx = (800 - bw) / 2, by = (600 - bh) / 2 - 25;
+        fillGLRect(bx + 6, by - 6, bw, bh, "rgba(0,0,0,0.55)");
+        fillGLRect(bx, by, bw, bh, "rgba(20, 26, 43, 0.92)");
+        fillGLRect(bx, by + bh - 5, bw, 5, color);
+        strokeGLRect(bx, by, bw, bh, color, 2);
+        ctx.fillStyle = color;
+        ctx.font = "bold 19px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(title, 400, toCanvasY(by + 70));
+        ctx.fillStyle = "#e0ebfa";
+        ctx.font = "15px system-ui, sans-serif";
+        ctx.fillText(sub, 400, toCanvasY(by + 32));
+      };
+
+      if (gameState === STATE_READY) drawBanner("READY TO LAUNCH", "Tap Arena / Launch Button or Press SPACE", "#59d1fa");
+      else if (gameState === STATE_PAUSED) drawBanner("GAME PAUSED", "Tap Pause Button or Press P to Resume", "#fad147");
+      else if (gameState === STATE_WON) drawBanner("YOU WIN! ALL BRICKS CLEARED!", `Final Score: ${score}  |  Tap or Press R to Play Again`, "#52e68f");
+      else if (gameState === STATE_GAME_OVER) drawBanner("GAME OVER", `Final Score: ${score}  |  Tap or Press R to Restart`, "#f55c6b");
+
+      ctx.restore();
+    }
+
+    // Input Handling (Touch, Mouse & Keyboard)
+    function clientToLogicalX(clientX) {
+      const rect = canvas.getBoundingClientRect();
+      return ((clientX - rect.left) / rect.width) * Config.WINDOW_WIDTH;
+    }
+
+    canvas.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      isDragging = true;
+      const wx = clientToLogicalX(e.clientX);
+      if (gameState === STATE_WON || gameState === STATE_GAME_OVER) {
+        resetGame();
+        return;
+      }
+      paddleX = wx - Config.PADDLE_WIDTH * 0.5;
+      clampPaddle();
+      if (gameState === STATE_READY) launchBall();
+    });
+
+    window.addEventListener("pointermove", (e) => {
+      if (!isDragging) return;
+      if (gameState === STATE_READY || gameState === STATE_PLAYING) {
+        paddleX = clientToLogicalX(e.clientX) - Config.PADDLE_WIDTH * 0.5;
+        clampPaddle();
+      }
+    });
+
+    window.addEventListener("pointerup", () => { isDragging = false; });
+
+    // Mobile Touch Buttons
+    const bindHoldBtn = (id, setFn) => {
+      const el = document.getElementById(id);
+      const start = (e) => { e.preventDefault(); el.classList.add("active"); setFn(true); };
+      const end = (e) => { e.preventDefault(); el.classList.remove("active"); setFn(false); };
+      el.addEventListener("pointerdown", start);
+      el.addEventListener("pointerup", end);
+      el.addEventListener("pointerleave", end);
+      el.addEventListener("pointercancel", end);
+    };
+    bindHoldBtn("btnLeft", (v) => moveLeft = v);
+    bindHoldBtn("btnRight", (v) => moveRight = v);
+    document.getElementById("btnLaunch").addEventListener("click", () => launchBall());
+    document.getElementById("btnPause").addEventListener("click", () => togglePause());
+    document.getElementById("btnRestart").addEventListener("click", () => resetGame());
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") moveLeft = true;
+      if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") moveRight = true;
+      if (e.key === " ") { e.preventDefault(); launchBall(); }
+      if (e.key === "p" || e.key === "P") togglePause();
+      if (e.key === "r" || e.key === "R") resetGame();
+    });
+    window.addEventListener("keyup", (e) => {
+      if (e.key === "ArrowLeft" || e.key === "a" || e.key === "A") moveLeft = false;
+      if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") moveRight = false;
+    });
+
+    resetGame();
+    let lastTs = performance.now();
+    function loop(now) {
+      let dt = (now - lastTs) / 1000;
+      lastTs = now;
+      if (dt > 0.05) dt = 0.05;
+      update(dt);
+      render();
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
